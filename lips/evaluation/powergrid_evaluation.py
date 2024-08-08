@@ -16,6 +16,7 @@ from .utils import metric_factory
 from ..logger import CustomLogger
 from ..config import ConfigManager
 from ..physical_simulator.dcApproximationAS import DCApproximationAS
+from ..dataset.utils.powergrid_utils import NamesConvention
 from ..metrics.power_grid import physics_compliances
 from ..metrics.ml_metrics import metrics
 from ..metrics.ml_metrics import external_metrics
@@ -40,13 +41,19 @@ class PowerGridEvaluation(Evaluation):
                  config: Union[ConfigManager, None]=None,
                  config_path: Union[str, None]=None,
                  scenario: Union[str, None]=None,
-                 log_path: Union[str, None]=None
+                 log_path: Union[str, None]=None,
+                 names_convention: Union[NamesConvention, None]=None
                  ):
         super().__init__(config=config,
                          config_path=config_path,
                          config_section=scenario,
                          log_path=log_path
                          )
+        if names_convention is not None:
+            self.names_convention = names_convention
+        else:
+            self.names_convention = NamesConvention()
+            
         self.eval_dict = self.config.get_option("eval_dict")
         self.eval_params = self.config.get_option("eval_params")
 
@@ -55,6 +62,7 @@ class PowerGridEvaluation(Evaluation):
     @classmethod
     def from_benchmark(cls,
                        benchmark: "PowerGridBenchmark",
+                       names_convention: Union[NamesConvention, None]=None
                       ):
         """ Intialize the evaluation class from a benchmark object
 
@@ -67,7 +75,7 @@ class PowerGridEvaluation(Evaluation):
         -------
         PowerGridEvaluation
         """
-        return cls(config=benchmark.config, log_path=benchmark.log_path)
+        return cls(config=benchmark.config, log_path=benchmark.log_path, names_convention=names_convention)
 
     def evaluate(self,
                  observations: dict,
@@ -190,6 +198,7 @@ class PowerGridEvaluation(Evaluation):
                              log_path=self.log_path,
                              observations=self.observations,
                              config=self.config,
+                             names_convention=self.names_convention,
                              **kwargs)
                              #env=env)
             metrics_physics[metric_name] = tmp

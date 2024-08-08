@@ -25,6 +25,7 @@ from scipy import sparse
 from grid2op.Agent import BaseAgent
 
 from . import DataSet
+from .utils.powergrid_utils import NamesConvention
 from ..utils import NpEncoder
 from ..logger import CustomLogger
 from ..physical_simulator import Grid2opSimulator
@@ -112,9 +113,11 @@ class PowerGridDataSet(DataSet):
         dataset.generate_data()
 
     """
-    ALL_VARIABLES = ("prod_p", "prod_v", "load_p", "load_q", "line_status", "topo_vect",
-                     "a_or", "a_ex", "p_or", "p_ex", "q_or", "q_ex", "prod_q", "load_v",
-                     "v_or", "v_ex", "theta_or", "theta_ex")
+    # names_convention = NamesConvention()
+    # ALL_VARIABLES  = tuple(names_convention.get_topology_variables() + names_convention.get_flow_variables())
+    # ALL_VARIABLES = ("prod_p", "prod_v", "load_p", "load_q", "line_status", "topo_vect",
+    #                  "a_or", "a_ex", "p_or", "p_ex", "q_or", "q_ex", "prod_q", "load_v",
+    #                  "v_or", "v_ex", "theta_or", "theta_ex")
 
     def __init__(self,
                  config: ConfigManager,
@@ -122,10 +125,18 @@ class PowerGridDataSet(DataSet):
                  # for compatibility with existing code this will be removed in future version
                  # (and serialize directly the output of the simulator)
                  attr_names: Union[tuple, None]=None,
-                 log_path: Union[str, None]=None
+                 log_path: Union[str, None]=None,
+                 names_convention: Union[NamesConvention, None]=None
                  ):
         DataSet.__init__(self, name=name)
         self._nb_divergence = 0
+        if names_convention is not None:
+            self.names_convention = names_convention
+        else:
+            self.names_convention = NamesConvention()
+        self.ALL_VARIABLES = tuple(self.names_convention.get_topology_variables() + 
+                                   self.names_convention.get_flow_variables())
+            
         if attr_names is not None:
             self._attr_names = copy.deepcopy(attr_names)
         else:
@@ -150,9 +161,12 @@ class PowerGridDataSet(DataSet):
         self._sizes_x = None  # dimension of each variable
         self._sizes_tau = None
         self._sizes_y = None  # dimension of each variable
-        self._attr_tau = self.config.get_option("attr_tau")
-        self._attr_x = self.config.get_option("attr_x")
-        self._attr_y = self.config.get_option("attr_y")
+        self._attr_tau = self.config.get_option(self.names_convention.topology_variables_title)
+        self._attr_x = self.config.get_option(self.names_convention.input_variables_title)
+        self._attr_y = self.config.get_option(self.names_convention.output_variables_title)
+        # self._attr_tau = self.config.get_option("attr_tau")
+        # self._attr_x = self.config.get_option("attr_x")
+        # self._attr_y = self.config.get_option("attr_y")
 
         self.env_data = dict()
         self._slack_id = None
@@ -238,10 +252,21 @@ class PowerGridDataSet(DataSet):
                 self.__row_indices = []
                 self.__col_indices = []
             else:
-                self.data["YBus"] = np.zeros((nb_samples, n_bus_bars, n_bus_bars), dtype=np.complex128) #for admittance matrix
-            self.data["SBus"] = np.zeros((nb_samples, n_bus_bars), dtype=np.complex128) #for vector of nodal injections
-            self.data["PV_nodes"] = np.zeros((nb_samples, n_bus_bars), dtype=bool) #for indices of P-V nodes
-            self.data["slack"] = np.zeros((nb_samples, 2), dtype=np.float16) #for indice of slack and active power adjusment from chronic
+                #for admittance matrix
+                self.data[self.names_convention.admittance_matrix] = np.zeros((nb_samples, 
+                                                                               n_bus_bars, n_bus_bars), 
+                                                                              dtype=np.complex128) 
+            #for vector of nodal injections
+            self.data[self.names_convention.power_matrix] = np.zeros((nb_samples, 
+                                                                      n_bus_bars), 
+                                                                     dtype=np.complex128) 
+            #for indices of P-V nodes
+            self.data[self.names_convention.pv_nodes] = np.zeros((nb_samples, 
+                                                                  n_bus_bars), 
+                                                                 dtype=bool) 
+            #for indice of slack and active power adjusment from chronic
+            self.data[self.names_convention.slack] = np.zeros((nb_samples, 2), 
+                                                              dtype=np.float16) 
 
         ds_size = 0
         pbar = tqdm(total = nb_samples)
@@ -262,7 +287,7 @@ class PowerGridDataSet(DataSet):
         if do_store_physics & store_as_sparse:
             sparse_matrix = sparse.csr_matrix((self.__ybus_data, (self.__row_indices, self.__col_indices)),
                                               shape=(nb_samples,n_bus_bars*n_bus_bars))
-            self.data["YBus"] = sparse_matrix
+            self.data[self.names_convention.admittance_matrix] = sparse_matrix
         pbar.close()
         self.size = nb_samples
         self._init_sample()
@@ -340,10 +365,11 @@ class PowerGridDataSet(DataSet):
                 self.__col_indices.extend(col_index)
                 self.__ybus_data.extend(data)
             else:
-                self.data["YBus"][current_size, :] = admittance_matrix
-            self.data["SBus"][current_size, :] = Injection_vect
-            self.data["PV_nodes"][current_size, :] = pv_nodes
-            self.data["slack"][current_size, :] = np.array([node_slack_id,adjusted_prod_slack], dtype=np.float16)
+                self.data[self.names_convention.admittance_matrix][current_size, :] = admittance_matrix
+            self.data[self.names_convention.power_matrix][current_size, :] = Injection_vect
+            self.data[self.names_convention.pv_nodes][current_size, :] = pv_nodes
+            self.data[self.names_convention.slack][current_size, :] = np.array([node_slack_id,adjusted_prod_slack], 
+                                                                               dtype=np.float16)
         else:
             self.logger.warning("Cannot store physics data if not using LightSim2Grid backend")
 
@@ -414,17 +440,22 @@ class PowerGridDataSet(DataSet):
         for attr_nm in self._attr_names:
             np.savez_compressed(f"{os.path.join(full_path_out, attr_nm)}.npz", data=self.data[attr_nm])
         if(do_save_physics):
-            if("YBus" in self.data.keys()):
+            if(self.names_convention.admittance_matrix in self.data.keys()):
                 if store_as_sparse:
-                    sparse.save_npz(os.path.join(full_path_out, "YBus")+".npz", matrix=self.data["YBus"])
+                    sparse.save_npz(os.path.join(full_path_out, self.names_convention.admittance_matrix)+".npz", 
+                                    matrix=self.data[self.names_convention.admittance_matrix])
                 else:
-                    np.savez_compressed(os.path.join(full_path_out, "YBus")+".npz", data=self.data["YBus"])
-            if("SBus" in self.data.keys()):
-                np.savez_compressed(os.path.join(full_path_out, "SBus") + ".npz", data=self.data["SBus"])
-            if("PV_nodes" in self.data.keys()):
-                np.savez_compressed(os.path.join(full_path_out, "PV_nodes") + ".npz", data=self.data["PV_nodes"])
-            if("slack" in self.data.keys()):
-                np.savez_compressed(os.path.join(full_path_out, "slack") + ".npz", data=self.data["slack"])
+                    np.savez_compressed(os.path.join(full_path_out, self.names_convention.admittance_matrix)+".npz", 
+                                        data=self.data[self.names_convention.admittance_matrix])
+            if(self.names_convention.power_matrix in self.data.keys()):
+                np.savez_compressed(os.path.join(full_path_out, self.names_convention.power_matrix) + ".npz", 
+                                    data=self.data[self.names_convention.power_matrix])
+            if(self.names_convention.pv_nodes in self.data.keys()):
+                np.savez_compressed(os.path.join(full_path_out, self.names_convention.pv_nodes) + ".npz", 
+                                    data=self.data[self.names_convention.pv_nodes])
+            if(self.names_convention.slack in self.data.keys()):
+                np.savez_compressed(os.path.join(full_path_out, self.names_convention.slack) + ".npz", 
+                                    data=self.data[self.names_convention.slack])
                 
         
         self._save_chronics_info(full_path_out)
@@ -472,14 +503,14 @@ class PowerGridDataSet(DataSet):
         self.data = {}
         self.size = None
         #for attr_nm in (*self._attr_names, *self._theta_attr_names):
-        if self.config.get_option("attr_physics"):
-            attr_names = self._attr_names + self.config.get_option("attr_physics")
+        if self.config.get_option(self.names_convention.physics_variables_title):
+            attr_names = self._attr_names + self.config.get_option(self.names_convention.physics_variables_title)
         else:
             attr_names = self._attr_names
 
         for attr_nm in attr_names:
             path_this_array = f"{os.path.join(full_path, attr_nm)}.npz"
-            if (attr_nm == "YBus") and (load_ybus_as_sparse):
+            if (attr_nm == self.names_convention.admittance_matrix) and (load_ybus_as_sparse):
                 self.data[attr_nm] = sparse.load_npz(path_this_array)
             else:
                 self.data[attr_nm] = np.load(path_this_array)["data"]

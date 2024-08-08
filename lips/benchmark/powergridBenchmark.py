@@ -24,6 +24,7 @@ from ..physical_simulator import PhysicalSimulator
 from ..physical_simulator import Grid2opSimulator
 from ..physical_simulator.dcApproximationAS import DCApproximationAS
 from ..dataset.powergridDataSet import PowerGridDataSet
+from ..dataset.utils.powergrid_utils import NamesConvention
 from ..dataset.utils.powergrid_utils import get_kwargs_simulator_scenario
 from ..dataset.utils.powergrid_utils import XDepthAgent, get_action_list
 from ..evaluation.powergrid_evaluation import PowerGridEvaluation
@@ -66,6 +67,7 @@ class PowerGridBenchmark(Benchmark):
                  load_ybus_as_sparse: bool=False,
                  evaluation: Union[PowerGridEvaluation, None]=None,
                  log_path: Union[pathlib.Path, str, None]=None,
+                 names_convention: Union[NamesConvention, None]=None,
                  **kwargs
                  ):
         super().__init__(benchmark_name=benchmark_name,
@@ -77,11 +79,15 @@ class PowerGridBenchmark(Benchmark):
                          log_path=log_path,
                          **kwargs
                         )
+        if names_convention is not None:
+            self.names_convention = names_convention
+        else:
+            self.names_convention = NamesConvention()
 
         self.is_loaded=False
         # TODO : it should be reset if the config file is modified on the fly
         if evaluation is None:
-            self.evaluation = PowerGridEvaluation.from_benchmark(self)
+            self.evaluation = PowerGridEvaluation.from_benchmark(self, names_convention=self.names_convention)
 
         self.env_name = self.config.get_option("env_name")
         self.env = None
@@ -109,12 +115,12 @@ class PowerGridBenchmark(Benchmark):
 
         # concatenate all the variables for data generation
         attr_names = ()
-        if self.config.get_option("attr_x") is not None:
-            attr_names += self.config.get_option("attr_x")
-        if self.config.get_option("attr_tau") is not None:
-            attr_names += self.config.get_option("attr_tau")
-        if self.config.get_option("attr_y") is not None:
-            attr_names += self.config.get_option("attr_y")
+        if self.config.get_option(self.names_convention.input_variables_title) is not None:
+            attr_names += self.config.get_option(self.names_convention.input_variables_title)
+        if self.config.get_option(self.names_convention.topology_variables_title) is not None:
+            attr_names += self.config.get_option(self.names_convention.topology_variables_title)
+        if self.config.get_option(self.names_convention.output_variables_title) is not None:
+            attr_names += self.config.get_option(self.names_convention.output_variables_title)
         
         # attr_names = self.config.get_option("attr_x") + \
         #              self.config.get_option("attr_tau") + \
@@ -123,25 +129,29 @@ class PowerGridBenchmark(Benchmark):
         self.train_dataset = PowerGridDataSet(name="train",
                                               attr_names=attr_names,
                                               config=self.config,
-                                              log_path=log_path
+                                              log_path=log_path,
+                                              names_convention=names_convention
                                               )
 
         self.val_dataset = PowerGridDataSet(name="val",
                                             attr_names=attr_names,
                                             config=self.config,
-                                            log_path=log_path
+                                            log_path=log_path,
+                                            names_convention=names_convention
                                             )
 
         self._test_dataset = PowerGridDataSet(name="test",
                                               attr_names=attr_names,
                                               config=self.config,
-                                              log_path=log_path
+                                              log_path=log_path,
+                                              names_convention=names_convention
                                               )
 
         self._test_ood_topo_dataset = PowerGridDataSet(name="test_ood_topo",
                                                        attr_names=attr_names,
                                                        config=self.config,
-                                                       log_path=log_path
+                                                       log_path=log_path,
+                                                       names_convention=names_convention
                                                        )
 
         if load_data_set:
