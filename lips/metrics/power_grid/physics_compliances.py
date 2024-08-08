@@ -14,6 +14,7 @@ import numpy as np
 # TODO : implement a mean_absolute_error independently from sklearn
 from sklearn.metrics import mean_absolute_error
 
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...evaluation.utils import metric_factory
 from ...metrics.power_grid.global_conservation import global_conservation
 from ...metrics.power_grid.local_conservation import local_conservation
@@ -26,6 +27,7 @@ from ...logger import CustomLogger
 def verify_current_pos(predictions: dict,
                        log_path: Union[str, None]=None,
                        result_level: int=0,
+                       names_convention: Union[NamesConvention, None]=None,
                        **kwargs):
     """current positivity check
 
@@ -45,11 +47,15 @@ def verify_current_pos(predictions: dict,
     `dict`
         a dictionary reporting the evaluation results for both line extremities
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances", log_path).logger
     verifications = dict()
 
-    for key_ in ["a_or", "a_ex"]:
+    for key_ in [names_convention.line_or_current, names_convention.line_ex_current]:
         try:
             a_arr = predictions[key_]
         except KeyError:
@@ -73,6 +79,7 @@ def verify_current_pos(predictions: dict,
 def verify_voltage_pos(predictions:dict,
                        log_path: Union[str, None]=None,
                        result_level: int=0,
+                       names_convention: Union[NamesConvention, None]=None,
                        **kwargs):
     """Voltage positivity check
 
@@ -92,11 +99,15 @@ def verify_voltage_pos(predictions:dict,
     ``dict``
         a dictionary reporting the evaluation results for both line extremities
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances", log_path).logger
     verifications = dict()
 
-    for key_ in ["v_or", "v_ex"]:
+    for key_ in [names_convention.line_or_voltage, names_convention.line_ex_voltage]:
         try:
             v_arr = predictions[key_]
         except KeyError:
@@ -120,6 +131,7 @@ def verify_voltage_pos(predictions:dict,
 def verify_loss_pos(predictions: dict,
                     log_path: Union[str, None]=None,
                     result_level: int=0,
+                    names_convention: Union[NamesConvention, None]=None,
                     **kwargs):
     """loss positivity check
 
@@ -139,12 +151,16 @@ def verify_loss_pos(predictions: dict,
     ``dict``
         a dictionary reporting the evaluation results
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances", log_path).logger
     verifications = dict()
     try:
-        p_or = predictions["p_or"]
-        p_ex = predictions["p_ex"]
+        p_or = predictions[names_convention.line_or_active_power]
+        p_ex = predictions[names_convention.line_ex_active_power]
     except KeyError:
         logger.error("The predictions dict does not include required variables")
         raise
@@ -167,6 +183,7 @@ def verify_loss_pos(predictions: dict,
 def verify_disc_lines(predictions: dict,
                       log_path: Union[str, None]=None,
                       result_level: int=0,
+                      names_convention: Union[NamesConvention, None]=None,
                       **kwargs):
     """Verifies if the predictions are null for disconnected lines
 
@@ -184,7 +201,13 @@ def verify_disc_lines(predictions: dict,
     `dict`
         a dictionary reporting the evaluation results
     """
-    FLOW_VARIABLES = ("p_or", "p_ex", "q_or", "q_ex", "a_or", "a_ex", "v_or", "v_ex")
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
+    
+    FLOW_VARIABLES = names_convention.get_line_flow_variables()
+    #FLOW_VARIABLES = ("p_or", "p_ex", "q_or", "q_ex", "a_or", "a_ex", "v_or", "v_ex")
     # logger
     logger = CustomLogger("PhysicsCompliances", log_path).logger
     try:
@@ -193,7 +216,7 @@ def verify_disc_lines(predictions: dict,
         logger.error("Kwargs of function verify_disc_lines does not include observations key")
 
     try:
-        line_status = observations["line_status"]
+        line_status = observations[names_convention.line_connectivity]
     except KeyError:
         logger.error("line_status key not found in observations.")
 
@@ -226,6 +249,7 @@ def verify_disc_lines(predictions: dict,
 def verify_current_eq(predictions: dict,
                       log_path: Union[str, None]=None,
                       result_level: int=0,
+                      names_convention: Union[NamesConvention, None]=None,
                       **kwargs):
     """
     verify the following relation between p, q and v :
@@ -250,31 +274,56 @@ def verify_current_eq(predictions: dict,
     ``dict``
         a dictionary reporting the evaluation results
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances", log_path).logger
     verifications = dict()
     # consider an epsilon value to avoid division by zero
     eps = sys.float_info.epsilon
-    for key_ in ("_or", "_ex"):
-        try:
-            a_arr = predictions["a"+key_]
-            p_arr = predictions["p"+key_]
-            q_arr = predictions["q"+key_]
-            v_arr = predictions["v"+key_]
-        except KeyError:
-            logger.error("The predictions dict does not include required variables")
-            raise
+    
+    for side in ("or", "ex"):
+        if side == "or":
+            try:
+                p_arr = predictions[names_convention.line_or_active_power]
+                q_arr = predictions[names_convention.line_or_reactive_power]
+                a_arr = predictions[names_convention.line_or_current]
+                v_arr = predictions[names_convention.line_or_voltage]
+            except KeyError:
+                logger.error("The predictions dict does not include required variables")
+                raise
+        elif side == "ex":
+            try:
+                p_arr = predictions[names_convention.line_ex_active_power]
+                q_arr = predictions[names_convention.line_ex_reactive_power]
+                a_arr = predictions[names_convention.line_ex_current]
+                v_arr = predictions[names_convention.line_ex_voltage]
+            except KeyError:
+                logger.error("The predictions dict does not include required variables")
+                raise
+    # for key_ in ("_or", "_ex"):
+        # try:
+        #     a_arr = predictions["a"+key_]
+        #     p_arr = predictions["p"+key_]
+        #     q_arr = predictions["q"+key_]
+        #     v_arr = predictions["v"+key_]
+        # except KeyError:
+        #     logger.error("The predictions dict does not include required variables")
+        #     raise
         #a_or = sqrt(p_or**2 + q_or**2) / (sqrt(3).v_or)
         #a_ex = sqrt(p_ex**2 + q_ex**2) / (sqrt(3).v_ex)
         a_comp = (np.sqrt(p_arr**2 + q_arr**2) / ((np.sqrt(3) * v_arr)+eps)) * 1000
-        verifications["a"+key_+"_deviation"] = [float(el) for el in
+        verifications["Current_"+side+"_deviation"] = [float(el) for el in
             mean_absolute_error(a_arr, a_comp, multioutput='raw_values')]
-        logger.info("Mean absolute error of a%s : %.3f", key_, np.mean(verifications["a"+key_+"_deviation"]))
+        logger.info("Mean absolute error of current_%s : %.3f", side, np.mean(verifications["Current_"+side+"_deviation"]))
     return verifications
 
 def verify_loss(predictions,
                 log_path: Union[str, None]=None,
                 result_level: int=0,
+                names_convention: Union[NamesConvention, None]=None,
                 **kwargs):
     """Verify the energy loss
 
@@ -306,6 +355,10 @@ def verify_loss(predictions,
     - failed_indices: `list`
         The indices of failed cases
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances(Loss)", log_path).logger
     try:
@@ -333,9 +386,9 @@ def verify_loss(predictions,
 
 
     try:
-        prod_p = observations["prod_p"]
-        p_or = predictions["p_or"]
-        p_ex = predictions["p_ex"]
+        prod_p = observations[names_convention.production_active_power]
+        p_or = predictions[names_convention.line_or_active_power]
+        p_ex = predictions[names_convention.line_ex_active_power]
     except KeyError:
         logger.error("The observations or/and predictions do not include required variables")
         raise

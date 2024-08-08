@@ -11,12 +11,13 @@ import itertools
 from cmath import exp, pi
 import numpy as np
 
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...logger import CustomLogger
-# from lips.logger import CustomLogger
 
 def verify_kirchhoff_law(predictions: dict,
                          log_path: Union[str, None]=None,
                          result_level: int=0,
+                         names_convention: Union[NamesConvention, None]=None,
                          **kwargs):
     """
     This function verifies the Kirchhoff's law based on power flow equations:
@@ -94,7 +95,12 @@ def verify_kirchhoff_law(predictions: dict,
         # Feel free to use your predictions
         verifications = verify_kirchhoff_law(predictions=data, observations=data, env=env, tolerance=0.01)
     """
-     # logger
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
+            
+    # logger
     logger = CustomLogger("PhysicsCompliances(Joule_law)", log_path).logger
 
     try:
@@ -132,11 +138,11 @@ def verify_kirchhoff_law(predictions: dict,
         raise
 
     verifications = dict()
-    ybuses = observations["YBus"]
-    p_ors = predictions["p_or"]
-    p_exs = predictions["p_ex"]
-    q_ors = predictions["q_or"]
-    q_exs = predictions["q_ex"]
+    ybuses = observations[names_convention.admittance_matrix]
+    p_ors = predictions[names_convention.line_or_active_power]
+    p_exs = predictions[names_convention.line_ex_active_power]
+    q_ors = predictions[names_convention.line_or_reactive_power]
+    q_exs = predictions[names_convention.line_ex_reactive_power]
 
     obs = env.reset()
     data_size = ybuses.shape[0]
@@ -146,12 +152,12 @@ def verify_kirchhoff_law(predictions: dict,
     q_ks = np.zeros((data_size, ybuses.shape[1]))
 
     for idx in range(data_size):
-        obs.topo_vect = observations["topo_vect"][idx]
+        obs.topo_vect = observations[names_convention.topology_vector][idx]
         lor_bus, _ = obs._get_bus_id(obs.line_or_pos_topo_vect, obs.line_or_to_subid)
         lex_bus, _ = obs._get_bus_id(obs.line_ex_pos_topo_vect, obs.line_ex_to_subid)
         ybus = ybuses[idx]
 
-        bus_v_complex, _ = get_complex_v(env, obs, predictions, idx, ybus)
+        bus_v_complex, _ = get_complex_v(env, obs, predictions, idx, ybus, names_convention)
         bus_s = np.conj(np.matmul(np.array(ybus), bus_v_complex)) * bus_v_complex * env.backend._grid.get_sn_mva()
         bus_ps[idx] = bus_s.real
         bus_qs[idx] = bus_s.imag
@@ -206,11 +212,11 @@ def verify_kirchhoff_law(predictions: dict,
 
     return verifications
 
-def get_complex_v(env, obs, predictions, idx, ybus):
+def get_complex_v(env, obs, predictions, idx, ybus, names_convention):
     lines_or_pu_to_kv=env.backend.lines_or_pu_to_kv
     lines_ex_pu_to_kv=env.backend.lines_ex_pu_to_kv
-    v_or = predictions["v_or"][idx] / lines_or_pu_to_kv
-    v_ex = predictions["v_ex"][idx] / lines_ex_pu_to_kv
+    v_or = predictions[names_convention.line_or_voltage][idx] / lines_or_pu_to_kv
+    v_ex = predictions[names_convention.line_ex_voltage][idx] / lines_ex_pu_to_kv
 
     #we want to get V in complex form per bus_bar
     bus_theta = np.zeros(ybus.shape[0])
@@ -219,8 +225,8 @@ def get_complex_v(env, obs, predictions, idx, ybus):
     lor_bus, _ = obs._get_bus_id(obs.line_or_pos_topo_vect, obs.line_or_to_subid)
     lex_bus, _ = obs._get_bus_id(obs.line_ex_pos_topo_vect, obs.line_ex_to_subid)
 
-    bus_theta[lor_bus] = predictions["theta_or"][idx]
-    bus_theta[lex_bus] = predictions["theta_ex"][idx]
+    bus_theta[lor_bus] = predictions[names_convention.line_or_voltage_angle][idx]
+    bus_theta[lex_bus] = predictions[names_convention.line_ex_voltage_angle][idx]
 
     bus_v[lor_bus]=v_or
     bus_v[lex_bus]=v_ex

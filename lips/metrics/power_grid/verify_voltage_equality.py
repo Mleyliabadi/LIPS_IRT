@@ -8,6 +8,7 @@ import numpy as np
 import grid2op
 from grid2op import Observation
 from ...dataset.utils.powergrid_utils import get_kwargs_simulator_scenario
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...logger import CustomLogger
 
 
@@ -91,7 +92,7 @@ def _aux_retrieve_elements_at_bus(obs, bus_id=0):
 
     return (lor_bus_idx, lex_bus_idx), gen_bus_idx, load_bus_idx, stor_bus_idx
 
-def _aux_get_voltages_at_bus(obs, bus_id, return_theta=True):
+def _aux_get_voltages_at_bus(obs, bus_id, names_convention, return_theta=True):
     """
     this function gets the voltages and voltage angles for an indicated bus from data
 
@@ -109,24 +110,24 @@ def _aux_get_voltages_at_bus(obs, bus_id, return_theta=True):
             whether to retrieve the voltage angle (theta) values
     """
     (lor_bus_idx, lex_bus_idx), gen_bus_idx, load_bus_idx, stor_bus_idx = _aux_retrieve_elements_at_bus(obs, bus_id=bus_id)
-    v_or_sub = obs.v_or[lor_bus_idx]#data["v_or"][:, lines_or_bus]
-    v_ex_sub = obs.v_ex[lex_bus_idx]#data["v_ex"][:, lines_ex_bus]
-    load_v_sub = obs.load_v[load_bus_idx]#data["load_v"][:, load_bus]
-    gen_v_sub = obs.gen_v[gen_bus_idx]#data["prod_v"][:, gen_bus]
+    v_or_sub = getattr(obs, names_convention.line_or_voltage)[lor_bus_idx]#data["v_or"][:, lines_or_bus]
+    v_ex_sub = getattr(obs, names_convention.line_ex_voltage)[lex_bus_idx]#data["v_ex"][:, lines_ex_bus]
+    load_v_sub = getattr(obs, names_convention.load_voltage)[load_bus_idx]#data["load_v"][:, load_bus]
+    gen_v_sub = getattr(obs, names_convention.production_voltage)[gen_bus_idx]#data["prod_v"][:, gen_bus]
 
     voltages = (v_or_sub, v_ex_sub, gen_v_sub, load_v_sub)
 
     thetas = None
     if return_theta:
-        theta_or_sub = obs.theta_or[lor_bus_idx] #data["theta_or"][:, lines_or_bus]
-        theta_ex_sub = obs.theta_ex[lex_bus_idx] #data["theta_ex"][:, lines_ex_bus]
-        load_theta_sub = obs.load_theta[load_bus_idx] #data["load_theta"][:, load_bus]
-        gen_theta_sub = obs.gen_theta[gen_bus_idx] #data["gen_theta"][:, gen_bus]
+        theta_or_sub = getattr(obs, names_convention.line_or_voltage_angle)[lor_bus_idx] #data["theta_or"][:, lines_or_bus]
+        theta_ex_sub = getattr(obs, names_convention.line_ex_voltage_angle)[lex_bus_idx] #data["theta_ex"][:, lines_ex_bus]
+        load_theta_sub = getattr(obs, names_convention.load_voltage_angle)[load_bus_idx] #data["load_theta"][:, load_bus]
+        gen_theta_sub = getattr(obs, names_convention.production_voltage_angle)[gen_bus_idx] #data["gen_theta"][:, gen_bus]
         thetas = (theta_or_sub, theta_ex_sub, gen_theta_sub, load_theta_sub)
 
     return voltages, thetas
 
-def _aux_update_observation(obs, real_data, predictions, idx):
+def _aux_update_observation(obs, real_data, predictions, idx, names_convention):
     """
     this function replaces all the variables of observation with those included in data
     """
@@ -135,13 +136,13 @@ def _aux_update_observation(obs, real_data, predictions, idx):
     real_data_keys = real_data.keys() - predictions.keys()
     # replacing the `obs` attributes using the injections + topology (real data)
     for attr_nm in real_data_keys:
-        if attr_nm == "prod_v":
+        if attr_nm == names_convention.production_voltage:
             attr_nm_obs = "gen_v"
-        elif attr_nm == "prod_q":
+        elif attr_nm == names_convention.production_reactive_power:
             attr_nm_obs = "gen_q"
-        elif attr_nm == "prod_p":
+        elif attr_nm == names_convention.production_active_power:
             attr_nm_obs = "gen_p"
-        elif attr_nm == "storage_theta":
+        elif attr_nm == names_convention.storage_voltage_angle:
             attr_nm_obs = ""
         else:
             attr_nm_obs = attr_nm
@@ -149,13 +150,13 @@ def _aux_update_observation(obs, real_data, predictions, idx):
 
     # replacing the remaining attributes using the predictions
     for attr_nm, val_ in predictions.items():
-        if attr_nm == "prod_v":
+        if attr_nm == names_convention.production_voltage:
             attr_nm = "gen_v"
-        elif attr_nm == "prod_q":
+        elif attr_nm == names_convention.production_reactive_power:
             attr_nm = "gen_q"
-        elif attr_nm == "prod_p":
+        elif attr_nm == names_convention.production_active_power:
             attr_nm = "gen_p"
-        elif attr_nm == "storage_theta":
+        elif attr_nm == names_convention.storage_voltage_angle:
             attr_nm = ""
         setattr(obs, attr_nm, val_[idx])
 
@@ -165,6 +166,7 @@ def _aux_update_observation(obs, real_data, predictions, idx):
 def verify_voltage_at_bus(predictions: dict,
                           log_path: Union[str, None]=None,
                           result_level: int=0,
+                          names_convention: Union[NamesConvention, None]=None,
                           **kwargs):
     """
     This functions checks if the elements connected to a same substations present the same voltages and angles
@@ -176,6 +178,10 @@ def verify_voltage_at_bus(predictions: dict,
     - the mean and standard deviation of voltage values at each node
     - the MAE between voltage values (it approaches the MAE computed over all the observations)
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances(voltage_eq)", log_path).logger
     try:
@@ -198,7 +204,7 @@ def verify_voltage_at_bus(predictions: dict,
         verify_theta = bool(config.get_option("eval_params")["VOLTAGE_EQ"]["verify_theta"])
 
     verifications = dict()
-    n_obs = len(observations["a_or"])
+    n_obs = len(observations[names_convention.line_or_current])
     obs = _get_fake_obs(config)
     n_buses = 2 * obs.n_sub
 
@@ -215,12 +221,12 @@ def verify_voltage_at_bus(predictions: dict,
     for i in tqdm(range(n_obs)):
         # update the observation with respect to data topology
         # this step is required, because the connectivity matrices and vectors evolve wrt. topology changes
-        obs_updated = _aux_update_observation(obs, observations, predictions, i)
+        obs_updated = _aux_update_observation(obs, observations, predictions, i, names_convention)
 
 
         for bus_ in range(n_buses):
             # extract the voltages and thetas connected to same ``bus_id`` busbar of the network
-            voltages, thetas = _aux_get_voltages_at_bus(obs_updated, bus_id=bus_, return_theta=verify_theta)
+            voltages, thetas = _aux_get_voltages_at_bus(obs_updated, bus_id=bus_, names_convention=names_convention, return_theta=verify_theta)
             voltages_at_sub = np.hstack(voltages)
 
             if len(voltages_at_sub) > 0:

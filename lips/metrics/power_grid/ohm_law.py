@@ -14,11 +14,13 @@ from cmath import exp, pi
 
 import numpy as np
 
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...logger import CustomLogger
 
 def verify_ohm_law(predictions: dict,
                    log_path: Union[str, None]=None,
                    result_level: int=0,
+                   names_convention: Union[NamesConvention, None]=None,
                    **kwargs):
     """
     This function compute Ohm's law at the branch level
@@ -95,6 +97,10 @@ def verify_ohm_law(predictions: dict,
         verifications = verify_ohm_law(predictions=data, observations=data, env=env, result_level=0)#, tolerance=0.01)
         print(verifications)
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances(Ohm_law)", log_path).logger
 
@@ -124,9 +130,9 @@ def verify_ohm_law(predictions: dict,
         raise
 
     verifications = dict()
-    ybuses =  observations["YBus"]
-    p_ors = predictions["p_or"]
-    p_exs = predictions["p_ex"]
+    ybuses =  observations[names_convention.admittance_matrix]
+    p_ors = predictions[names_convention.line_or_active_power]
+    p_exs = predictions[names_convention.line_ex_active_power]
 
     obs = env.reset()
     grid_model = env.backend._grid
@@ -136,11 +142,11 @@ def verify_ohm_law(predictions: dict,
     p_ex_computed = np.zeros_like(p_exs)
 
     for idx in range(data_size):
-        obs.topo_vect = observations["topo_vect"][idx]
+        obs.topo_vect = observations[names_convention.topology_vector][idx]
         lor_bus, _ = obs._get_bus_id(obs.line_or_pos_topo_vect, obs.line_or_to_subid)
         lex_bus, _ = obs._get_bus_id(obs.line_ex_pos_topo_vect, obs.line_ex_to_subid)
         ybus = ybuses[idx]
-        bus_v_complex, _ = get_complex_v(env, obs, predictions, idx, ybus)
+        bus_v_complex, _ = get_complex_v(env, obs, predictions, idx, ybus, names_convention)
 
         for id_, line in enumerate(grid_model.get_lines()):
             # print("Line : ", id_)
@@ -205,7 +211,7 @@ def verify_ohm_law(predictions: dict,
 
     return verifications
 
-def get_complex_v(env, obs, predictions, idx, ybus):
+def get_complex_v(env, obs, predictions, idx, ybus, names_convention):
     lines_or_pu_to_kv = env.backend.lines_or_pu_to_kv
     lines_ex_pu_to_kv = env.backend.lines_ex_pu_to_kv
     v_or = predictions["v_or"][idx] / lines_or_pu_to_kv
@@ -218,8 +224,8 @@ def get_complex_v(env, obs, predictions, idx, ybus):
     lor_bus, _ = obs._get_bus_id(obs.line_or_pos_topo_vect, obs.line_or_to_subid)
     lex_bus, _ = obs._get_bus_id(obs.line_ex_pos_topo_vect, obs.line_ex_to_subid)
 
-    bus_theta[lor_bus] = predictions["theta_or"][idx]
-    bus_theta[lex_bus] = predictions["theta_ex"][idx]
+    bus_theta[lor_bus] = predictions[names_convention.line_or_voltage_angle][idx]
+    bus_theta[lex_bus] = predictions[names_convention.line_ex_voltage_angle][idx]
 
     bus_v[lor_bus]=v_or
     bus_v[lex_bus]=v_ex

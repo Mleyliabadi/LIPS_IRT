@@ -9,11 +9,13 @@
 from typing import Union
 import numpy as np
 
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...logger import CustomLogger
 
 def global_conservation(predictions: dict,
                         log_path: Union[str, None]=None,
                         result_level: int=0,
+                        names_convention: Union[NamesConvention, None]=None,
                         **kwargs
                         ):
     """This function verifies the law of conservation of energy (LCE)
@@ -44,6 +46,10 @@ def global_conservation(predictions: dict,
     - failed_indices: `array`
         an array giving the indices of observations that not verify the law given the indicated tolerance
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
     # logger
     logger = CustomLogger("PhysicsCompliances(LCE)", log_path).logger
 
@@ -68,10 +74,10 @@ def global_conservation(predictions: dict,
 
 
     try:
-        prod_p = observations["prod_p"]
-        load_p = observations["load_p"]
-        p_or = predictions["p_or"]
-        p_ex = predictions["p_ex"]
+        prod_p = observations[names_convention.production_active_power]
+        load_p = observations[names_convention.load_active_power]
+        p_or = predictions[names_convention.line_or_active_power]
+        p_ex = predictions[names_convention.line_ex_active_power]
     except KeyError:
         logger.error("The observations or/and predictions do not include required variables")
         raise

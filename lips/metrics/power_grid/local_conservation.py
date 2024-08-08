@@ -10,11 +10,13 @@ from typing import Union
 import numpy as np
 from sklearn.metrics import mean_absolute_error
 
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...logger import CustomLogger
 
 def local_conservation(predictions,
                        log_path: Union[str, None]=None,
                        result_level: int=0,
+                       names_convention: Union[NamesConvention, None]=None,
                        **kwargs):
     """compute the conservation law for all the observations at each station
 
@@ -32,6 +34,11 @@ def local_conservation(predictions,
     _type_
         _description_
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
+        
     # logger
     logger = CustomLogger("PhysicsCompliances(LCE)", log_path).logger
 
@@ -61,12 +68,12 @@ def local_conservation(predictions,
         tolerance = float(config.get_option("eval_params")["LC_tolerance"])
 
     try:
-        prod_p = observations["prod_p"]
-        load_p = observations["load_p"]
-        p_or_real = observations["p_or"]
-        p_ex_real = observations["p_ex"]
-        p_or_pred = predictions["p_or"]
-        p_ex_pred = predictions["p_ex"]
+        prod_p = observations[names_convention.production_active_power]
+        load_p = observations[names_convention.load_active_power]
+        p_or_real = observations[names_convention.line_or_active_power]
+        p_ex_real = observations[names_convention.line_ex_active_power]
+        p_or_pred = predictions[names_convention.line_or_active_power]
+        p_ex_pred = predictions[names_convention.line_ex_active_power]
 
     except KeyError:
         logger.error("The observations or/and predictions do not include required variables")
@@ -119,13 +126,13 @@ def local_conservation_at_obs(env, prod_p, load_p, p_or, p_ex, obs_id):
     right_side = np.zeros(env.n_sub, dtype=float)
     for sub_id in range(env.n_sub):
         lc_at_obs[sub_id], left_side[sub_id], right_side[sub_id] = local_conservation_at_obs_at_sub(env,
-                                                                                          prod_p,
-                                                                                          load_p,
-                                                                                          p_or,
-                                                                                          p_ex,
-                                                                                          obs_id=obs_id,
-                                                                                          sub_id=sub_id
-                                                                                          )
+                                                                                                    prod_p,
+                                                                                                    load_p,
+                                                                                                    p_or,
+                                                                                                    p_ex,
+                                                                                                    obs_id=obs_id,
+                                                                                                    sub_id=sub_id
+                                                                                                    )
     return lc_at_obs, left_side, right_side
 
 

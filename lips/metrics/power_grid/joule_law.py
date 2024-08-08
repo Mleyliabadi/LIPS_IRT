@@ -7,11 +7,13 @@ import numpy as np
 from lightsim2grid import LightSimBackend
 from grid2op.Backend import PandaPowerBackend
 
+from ...dataset.utils.powergrid_utils import NamesConvention
 from ...logger import CustomLogger
 
 def verify_joule_law(predictions: dict,
                      log_path: Union[str, None]=None,
                      result_level: int=0,
+                     names_convention: Union[NamesConvention, None]=None,
                      **kwargs):
     """
     This function compute Joule's law which is ``$PL = R \times I^2$``
@@ -52,6 +54,10 @@ def verify_joule_law(predictions: dict,
     - violation_proportion: `scalar`
         The percentage of violation of Joule law over all the observations
     """
+    if names_convention is not None:
+        names_convention = names_convention
+    else:
+        names_convention = NamesConvention()
      # logger
     logger = CustomLogger("PhysicsCompliances(Joule_law)", log_path).logger
 
@@ -91,12 +97,12 @@ def verify_joule_law(predictions: dict,
         # n_transformers
         n_transformers = len(env.backend._grid.trafo)
         # get the resistance
-        r_ohm = np.array(env.backend._grid.line["r_ohm_per_km"]).reshape(1,-1)
+        r_ohm = np.array(env.backend._grid.line[names_convention.resistance]).reshape(1,-1)
 
     verifications = dict()
-    mean_current = _get_average_currents(predictions)
+    mean_current = _get_average_currents(predictions, names_convention)
     mean_current_squared = np.power(mean_current, 2)
-    pl_mw = _get_power_loss(predictions)
+    pl_mw = _get_power_loss(predictions, names_convention)
     # MAE between PL and R.I^2
     left_array = pl_mw[:, :n_lines]/3
     right_array = mean_current_squared[:, :n_lines] * r_ohm
@@ -119,7 +125,7 @@ def verify_joule_law(predictions: dict,
 
     return verifications
 
-def _get_average_currents(data: dict) -> np.ndarray:
+def _get_average_currents(data: dict, names_convention: NamesConvention) -> np.ndarray:
     """Compute the average current using current from both extremities of a power line
 
     Parameters
@@ -132,11 +138,11 @@ def _get_average_currents(data: dict) -> np.ndarray:
     np.array
         average matrix of currents
     """
-    current_avg = np.abs(data.get("a_or") + data.get("a_ex"))/2
+    current_avg = np.abs(data.get(names_convention.line_or_current) + data.get(names_convention.line_ex_current))/2
     current_avg_kA = current_avg / 1000
     return current_avg_kA
 
-def _get_power_loss(data: dict) -> np.ndarray:
+def _get_power_loss(data: dict, names_convention: NamesConvention) -> np.ndarray:
     """Compute the power loss from powers at two extremities of power lines
 
     Parameters
@@ -149,5 +155,5 @@ def _get_power_loss(data: dict) -> np.ndarray:
     ``np.ndarray``
         Power losses array at the line level for all the observations
     """
-    pl_mw = np.abs(data.get("p_or") + data.get("p_ex"))
+    pl_mw = np.abs(data.get(names_convention.line_or_active_power) + data.get(names_convention.line_ex_active_power))
     return pl_mw
