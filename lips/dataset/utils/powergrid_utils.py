@@ -4,6 +4,7 @@ PowerGrid general scenario utilities
 from typing import Union
 import itertools
 import warnings
+from dataclasses import dataclass
 import numpy as np
 
 # from grid2op.Chronics import GridStateFromFile
@@ -16,6 +17,90 @@ from grid2op.Parameters import Parameters
 from ...logger import CustomLogger
 from ...config import ConfigManager
 
+@dataclass
+class NamesConvention:
+    input_variables_title: str = "attr_x"
+    output_variables_title: str = "attr_y"
+    topology_variables_title: str = "attr_tau"
+    physics_variables_title: str = "attr_physics"
+    flow_variables: set = ("production_active_power", "production_reactive_power", "production_voltage", "load_active_power", "load_reactive_power",
+                            "load_voltage", "line_or_active_power", "line_ex_active_power", "line_or_reactive_power", "line_ex_reactive_power",
+                            "line_or_voltage", "line_ex_voltage", "line_or_current", "line_ex_current", "line_or_voltage_angle", "line_ex_voltage_angle")
+    line_flow_variables: set = ("line_or_active_power", "line_ex_active_power", "line_or_reactive_power", "line_ex_reactive_power",
+                                "line_or_voltage", "line_ex_voltage", "line_or_current", "line_ex_current")
+    line_or_flow_variables: set = ("line_or_active_power", "line_or_reactive_power", "line_or_voltage", "line_or_current")
+    line_ex_flow_variables: set = ("line_ex_active_power", "line_ex_reactive_power", "line_ex_voltage", "line_ex_current")
+    topology_variables: set = ("topology_vector", "line_connectivity")
+    physics_variables: set = ("admittance_matrix", "power_matrix", "pv_nodes", "slack")
+    production_active_power: str = "prod_p"
+    production_reactive_power: str = "prod_q"
+    production_voltage: str = "prod_v"
+    production_voltage_angle: str = "gen_theta"
+    load_active_power: str = "load_p"
+    load_reactive_power: str = "load_q"
+    load_voltage: str = "load_v"
+    load_voltage_angle: str = "load_theta"
+    line_or_active_power: str = "p_or"
+    line_ex_active_power: str = "p_ex"
+    line_or_reactive_power: str = "q_or"
+    line_ex_reactive_power: str = "q_ex"
+    line_or_voltage: str = "v_or"
+    line_ex_voltage: str = "v_ex"
+    line_or_current: str = "a_or"
+    line_ex_current: str = "a_ex"
+    line_or_voltage_angle: str = "theta_or"
+    line_ex_voltage_angle: str = "theta_ex"
+    storage_voltage_angle: str = "storage_theta"
+    topology_vector: str = "topo_vect"
+    line_connectivity: str = "line_status"
+    admittance_matrix: str = "YBus"
+    power_matrix: str = "SBus"
+    pv_nodes: str = "PV_nodes"
+    slack: str = "slack"
+    resistance: str = "r_ohm_per_km"
+    
+    def todict(self):
+        return self.__dict__
+    
+    def set_from_config(self, config):
+        for key_, val_ in config.get_options_dict().items():
+            setattr(self, key_, val_)
+    
+    def get_flow_variables(self):
+        flow_variables = []
+        for attr_ in self.flow_variables:
+            flow_variables.append(self.__getattribute__(attr_))
+        return flow_variables
+    
+    def get_line_flow_variables(self):
+        flow_variables = []
+        for attr_ in self.line_flow_variables:
+            flow_variables.append(self.__getattribute__(attr_))
+        return flow_variables
+    
+    def get_line_or_flow_variables(self):
+        flow_variables = []
+        for attr_ in self.line_or_flow_variables:
+            flow_variables.append(self.__getattribute__(attr_))
+        return flow_variables
+    
+    def get_line_ex_flow_variables(self):
+        flow_variables = []
+        for attr_ in self.line_ex_flow_variables:
+            flow_variables.append(self.__getattribute__(attr_))
+        return flow_variables
+    
+    def get_topology_variables(self):
+        topo_variables = []
+        for attr_ in self.topology_variables:
+            topo_variables.append(self.__getattribute__(attr_))
+        return topo_variables
+    
+    def get_physics_variables(self):
+        physics_variables = []
+        for attr_ in self.physics_variables:
+            physics_variables.append(self.__getattribute__(attr_))
+        return physics_variables
 
 def get_kwargs_simulator_scenario(config: ConfigManager) -> dict:
     """Return environment parameters for Benchmark1
