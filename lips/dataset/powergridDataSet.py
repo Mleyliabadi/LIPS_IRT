@@ -328,7 +328,7 @@ class PowerGridDataSet(DataSet):
 
             #get info on slack
             prod_bus, _ = obs._get_bus_id(obs.gen_pos_topo_vect, obs.gen_to_subid)
-            node_slack_id = prod_bus[-1]
+            node_slack_id = grid.get_slack_ids()    
             index_gens_slack = (prod_bus==node_slack_id)
             adjusted_prod_slack = obs.gen_p[index_gens_slack].sum() - Sbus[node_slack_id].real #after_powerflow - in_chronics
 
